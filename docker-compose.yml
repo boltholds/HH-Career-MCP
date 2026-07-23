@@ -1,0 +1,60 @@
+services:
+  hh-career-mcp:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HH_MCP_TRANSPORT: streamable-http
+      HH_MCP_HOST: 0.0.0.0
+      HH_MCP_PORT: 8000
+      HH_MCP_PATH: /mcp
+      HH_TOKEN_FILE: /data/hh/token.json
+    volumes:
+      - hh-oauth:/data/hh
+    ports:
+      - "127.0.0.1:${HH_MCP_PORT_FORWARD:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; s=socket.create_connection(('127.0.0.1', 8000), 3); s.close()"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  hh-auth:
+    build: .
+    profiles: ["auth"]
+    env_file: .env
+    environment:
+      HH_TOKEN_FILE: /data/hh/token.json
+      HH_OAUTH_CALLBACK_BIND_HOST: 0.0.0.0
+    volumes:
+      - hh-oauth:/data/hh
+    ports:
+      - "127.0.0.1:${HH_OAUTH_CALLBACK_PORT:-8766}:8766"
+    command: ["hh-career-auth", "login"]
+
+  tunnel-client:
+    build:
+      context: .
+      dockerfile: docker/tunnel/Dockerfile
+      args:
+        TUNNEL_CLIENT_VERSION: ${TUNNEL_CLIENT_VERSION:-0.0.10}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TUNNEL_PROFILE: ${TUNNEL_PROFILE:-hh-career-mcp}
+      MCP_SERVER_URL: http://hh-career-mcp:8000/mcp
+    depends_on:
+      hh-career-mcp:
+        condition: service_healthy
+    volumes:
+      - tunnel-state:/data/tunnel-client
+    ports:
+      - "127.0.0.1:${TUNNEL_HEALTH_PORT:-8082}:8080"
+
+volumes:
+  hh-oauth:
+  tunnel-state:
