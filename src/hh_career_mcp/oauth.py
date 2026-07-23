@@ -212,8 +212,8 @@ class OAuthTokenManager:
     ) -> None:
         self._settings = settings
         self._store = store or OAuthTokenStore(settings.token_file)
-        self._oauth = oauth_client or HHOAuthClient(settings)
-        self._owns_oauth = oauth_client is None
+        self._oauth = oauth_client
+        self._owns_oauth = False
         self._refresh_lock = asyncio.Lock()
 
     def status(self) -> dict[str, Any]:
@@ -263,10 +263,13 @@ class OAuthTokenManager:
                 raise OAuthNotAuthorizedError(
                     "The HH access token expired and no refresh token is available"
                 )
+            if self._oauth is None:
+                self._oauth = HHOAuthClient(self._settings)
+                self._owns_oauth = True
             refreshed = await self._oauth.refresh(token.refresh_token)
             self._store.save(refreshed)
             return refreshed.access_token
 
     async def close(self) -> None:
-        if self._owns_oauth:
+        if self._owns_oauth and self._oauth is not None:
             await self._oauth.close()
