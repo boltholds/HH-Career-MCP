@@ -25,10 +25,12 @@ def oauth_settings(tmp_path: Path) -> Settings:
     )
 
 
-def test_authorization_request_contains_state_and_pkce(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_authorization_request_contains_state_and_pkce(tmp_path: Path) -> None:
     settings = oauth_settings(tmp_path)
-    oauth = HHOAuthClient(settings)
-    request = oauth.create_authorization_request()
+    async with httpx.AsyncClient() as transport:
+        oauth = HHOAuthClient(settings, transport)
+        request = oauth.create_authorization_request()
     query = parse_qs(urlparse(request.url).query)
 
     assert query["response_type"] == ["code"]
@@ -55,7 +57,7 @@ async def test_expired_token_is_refreshed_and_rotated(tmp_path: Path) -> None:
     async with httpx.AsyncClient() as transport:
         oauth = HHOAuthClient(settings, transport)
         manager = OAuthTokenManager(settings, store=store, oauth_client=oauth)
-        with respx.mock as router:
+        with respx.mock() as router:
             route = router.post("https://api.hh.ru/token").mock(
                 return_value=httpx.Response(
                     200,
