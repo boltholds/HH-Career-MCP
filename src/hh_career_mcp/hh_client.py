@@ -66,7 +66,9 @@ class HHClient:
 
         if response.is_error:
             if isinstance(payload, dict):
-                message = str(payload.get("description") or payload.get("errors") or response.reason_phrase)
+                description = payload.get("description")
+                errors = payload.get("errors")
+                message = str(description or errors or response.reason_phrase)
             else:
                 message = response.reason_phrase
             raise HHAPIError(response.status_code, message, payload)
