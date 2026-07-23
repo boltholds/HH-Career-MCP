@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hh-career-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "API-first MCP server for HH.ru career workflows"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,6 +28,7 @@ dev = [
 
 [project.scripts]
 hh-career-mcp = "hh_career_mcp.server:main"
+hh-career-auth = "hh_career_mcp.auth_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hh_career_mcp"]
