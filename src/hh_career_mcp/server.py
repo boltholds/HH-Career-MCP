@@ -14,11 +14,15 @@ hh = HHClient(settings)
 mcp = FastMCP(
     "HH Career MCP",
     instructions=(
-        "Use these tools to inspect HH.ru vacancies and account state. "
-        "The current version is read-only: do not claim that applications, messages, "
-        "or resume changes were sent."
+        "Use these tools to inspect HH.ru vacancies, the authenticated account, and its "
+        "resumes. This version is read-only: do not claim that applications, messages, "
+        "or resume changes were sent. Never expose OAuth credentials or raw token files."
     ),
     json_response=True,
+    stateless_http=True,
+    host=settings.mcp_host,
+    port=settings.mcp_port,
+    streamable_http_path=settings.mcp_path,
 )
 
 
@@ -36,7 +40,7 @@ def _error_payload(error: Exception) -> dict[str, Any]:
 
 @mcp.tool()
 async def hh_connection_status() -> dict[str, Any]:
-    """Check whether the HH API is reachable and OAuth is configured."""
+    """Check HH API reachability and sanitized OAuth state."""
 
     try:
         return {"ok": True, **await hh.health()}
@@ -46,7 +50,7 @@ async def hh_connection_status() -> dict[str, Any]:
 
 @mcp.tool()
 async def hh_get_current_user() -> dict[str, Any]:
-    """Return the OAuth-authenticated HH.ru user. Requires HH_ACCESS_TOKEN."""
+    """Return the OAuth-authenticated HH.ru user."""
 
     try:
         return {"ok": True, "user": await hh.get_current_user()}
@@ -96,6 +100,26 @@ async def hh_get_vacancy(vacancy_id: str) -> dict[str, Any]:
 
     try:
         return {"ok": True, "vacancy": await hh.get_vacancy(vacancy_id)}
+    except Exception as error:
+        return _error_payload(error)
+
+
+@mcp.tool()
+async def hh_list_my_resumes() -> dict[str, Any]:
+    """Return all resumes owned by the authenticated HH.ru applicant."""
+
+    try:
+        return {"ok": True, "resumes": await hh.list_my_resumes()}
+    except Exception as error:
+        return _error_payload(error)
+
+
+@mcp.tool()
+async def hh_get_my_resume(resume_id: str) -> dict[str, Any]:
+    """Return one full resume available to the authenticated applicant."""
+
+    try:
+        return {"ok": True, "resume": await hh.get_my_resume(resume_id)}
     except Exception as error:
         return _error_payload(error)
 
