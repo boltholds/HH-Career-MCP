@@ -1,8 +1,49 @@
-"""Typed models exposed by the MCP tools."""
+"""Typed models exposed by the MCP tools and OAuth subsystem."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+class OAuthTokenSet(BaseModel):
+    """Persisted HH.ru user OAuth token pair."""
+
+    access_token: str = Field(min_length=1)
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    expires_at: datetime
+    obtained_at: datetime
+
+    @classmethod
+    def from_response(
+        cls,
+        payload: dict[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> "OAuthTokenSet":
+        """Create a token pair from the HH token endpoint response."""
+
+        current = now or datetime.now(UTC)
+        expires_in = int(payload["expires_in"])
+        return cls(
+            access_token=str(payload["access_token"]),
+            refresh_token=(
+                str(payload["refresh_token"]) if payload.get("refresh_token") else None
+            ),
+            token_type=str(payload.get("token_type", "bearer")),
+            obtained_at=current,
+            expires_at=current + timedelta(seconds=expires_in),
+        )
+
+    def is_expired(self, *, now: datetime | None = None) -> bool:
+        """Return true only after the access token lifetime has elapsed."""
+
+        current = now or datetime.now(UTC)
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        return current >= expires_at
 
 
 class VacancySearchParams(BaseModel):
