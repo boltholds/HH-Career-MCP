@@ -7,6 +7,7 @@ import httpx
 
 from hh_career_mcp.config import Settings
 from hh_career_mcp.models import VacancySearchParams, VacancySearchResult
+from hh_career_mcp.oauth import OAuthNotAuthorizedError, OAuthTokenManager
 
 
 class HHAPIError(RuntimeError):
@@ -21,7 +22,12 @@ class HHAPIError(RuntimeError):
 class HHClient:
     """Small HTTP client that keeps HH-specific concerns out of MCP tools."""
 
-    def __init__(self, settings: Settings, http_client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        http_client: httpx.AsyncClient | None = None,
+        token_manager: OAuthTokenManager | None = None,
+    ) -> None:
         self._settings = settings
         self._owns_client = http_client is None
         self._client = http_client or httpx.AsyncClient(
@@ -29,22 +35,21 @@ class HHClient:
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
         )
+        self._tokens = token_manager or OAuthTokenManager(settings)
+        self._owns_tokens = token_manager is None
 
-    @property
-    def auth_configured(self) -> bool:
-        return self._settings.access_token is not None
-
-    def _headers(self, *, require_auth: bool) -> dict[str, str]:
+    async def _headers(self, *, require_auth: bool) -> dict[str, str]:
         headers = {
             "Accept": "application/json",
             "HH-User-Agent": self._settings.user_agent,
             "User-Agent": self._settings.user_agent,
         }
-        token = self._settings.access_token
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token.get_secret_value()}"
-        elif require_auth:
-            raise HHAPIError(401, "HH_ACCESS_TOKEN is not configured")
+        if require_auth:
+            try:
+                token = await self._tokens.get_access_token()
+            except OAuthNotAuthorizedError as error:
+                raise HHAPIError(401, str(error)) from error
+            headers["Authorization"] = f"Bearer {token}"
         return headers
 
     async def _get(
@@ -57,7 +62,7 @@ class HHClient:
         response = await self._client.get(
             path,
             params=params,
-            headers=self._headers(require_auth=require_auth),
+            headers=await self._headers(require_auth=require_auth),
         )
         try:
             payload: Any = response.json()
@@ -81,7 +86,7 @@ class HHClient:
         payload = await self._get("/dictionaries")
         return {
             "api_reachable": True,
-            "auth_configured": self.auth_configured,
+            "oauth": self._tokens.status(),
             "dictionaries_loaded": bool(payload),
         }
 
@@ -98,6 +103,21 @@ class HHClient:
             raise ValueError("vacancy_id must not be empty")
         return await self._get(f"/vacancies/{vacancy_id}")
 
+    async def list_my_resumes(self) -> dict[str, Any]:
+        """Return resumes owned by the authenticated applicant."""
+
+        return await self._get("/resumes/mine", require_auth=True)
+
+    async def get_my_resume(self, resume_id: str) -> dict[str, Any]:
+        """Return a full resume available to the authenticated applicant."""
+
+        resume_id = resume_id.strip()
+        if not resume_id:
+            raise ValueError("resume_id must not be empty")
+        return await self._get(f"/resumes/{resume_id}", require_auth=True)
+
     async def close(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+        if self._owns_tokens:
+            await self._tokens.close()
