@@ -25,7 +25,7 @@ def _html_page(title: str, message: str) -> bytes:
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
         f"<title>{title}</title></head><body><h1>{title}</h1><p>{message}</p>"
         "<p>Это окно можно закрыть.</p></body></html>"
-    ).encode("utf-8")
+    ).encode()
 
 
 async def _wait_for_callback(
@@ -40,7 +40,9 @@ async def _wait_for_callback(
             "The built-in OAuth helper requires an http://127.0.0.1 or localhost redirect URI"
         )
     if redirect.query or redirect.fragment:
-        raise RuntimeError("The built-in OAuth helper does not support query or fragment in redirect URI")
+        raise RuntimeError(
+            "The built-in OAuth helper does not support query or fragment in redirect URI"
+        )
 
     callback_path = redirect.path or "/"
     callback_port = redirect.port or 80
